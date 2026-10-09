@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mongodb:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1}).ok'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint backend and frontend
+        run: |
+          npm --prefix backend run lint
+          npm --prefix frontend run lint
+
+      - name: Verify formatting
+        run: |
+          npm --prefix backend run format:check
+          npm --prefix frontend run format:check
+
+      - name: Run backend integration tests
+        working-directory: backend
+        env:
+          TEST_MONGO_URI: mongodb://127.0.0.1:27017/mydiary_auth_test
+          APP_ORIGIN: http://localhost:5173
+          COOKIE_SECURE: "false"
+        run: npm test
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build backend Docker image
+        run: docker build --tag mydiary-backend:ci ./backend
+
+      - name: Build frontend Docker image
+        run: docker build --tag mydiary-frontend:ci ./frontend
+
+      - name: Validate Docker Compose configuration
+        env:
+          JWT_SECRET: ci-validation-placeholder-not-for-deployment
+          APP_ORIGIN: http://localhost:5173
+          COOKIE_SECURE: "false"
+        run: docker compose config --quiet

@@ -1,0 +1,58 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:5000:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: 5000
+      # MONGO_URI: ${MONGODB_URI}
+      UPLOAD_DIR: /app/uploads
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the environment or root .env file}
+      APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN in the environment or root .env file}
+      COOKIE_SECURE: ${COOKIE_SECURE:?Set COOKIE_SECURE in the environment or root .env file}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - diary-uploads:/app/uploads
+
+  mongodb:
+    image: mongo:8
+    volumes:
+      - diary-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    command:
+      [
+        "redis-server",
+        "--save",
+        "",
+        "--appendonly",
+        "no",
+        "--maxmemory",
+        "128mb",
+        "--maxmemory-policy",
+        "allkeys-lru"
+      ]
+    restart: unless-stopped
+
+volumes:
+  diary-data:
+  diary-uploads:
