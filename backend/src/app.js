@@ -8,10 +8,17 @@ import profileRoutes from "./routes/profileRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { requireSameOrigin } from "./middleware/requireSameOrigin.js";
+import cors from "cors";
+
 
 export function createApp() {
   const app = express();
-
+  app.use(
+    cors({
+      origin: process.env.APP_ORIGIN,
+      credentials: true,
+    })
+  );
   app.set("trust proxy", 1);
   app.use(express.json({ limit: "256kb" }));
   app.use(cookieParser());
